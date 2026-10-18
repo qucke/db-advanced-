@@ -116,7 +116,7 @@ BEGIN
 
     -- 4. Вставка данных в новую таблицу
     insert into public.calc_temperature_correction(temperature, correction)
-		values(0, 0.5),(5, 0.5),(10, 1), (20,1), (25, 2), (30, 3.5), (40, 4.5);
+		values(0, 0.5), (5, 0.5), (10, 1), (15, 1), (20, 1.5), (25, 2), (30, 3.5), (40, 4.5);
     ON CONFLICT DO NOTHING;
 
     -- 5. Синхронизация счетчиков (sequence) через переменные.
@@ -187,9 +187,4 @@ BEGIN
             (parametr_id = 6 AND parametr_value BETWEEN 0 AND 150)       -- Дальность сноса пуль
         );
 
-ALTER TABLE temperature_calculations 
-        ADD CONSTRAINT chk_temp_calc_range CHECK (
-            base_temperature BETWEEN -58 AND 58 
-            AND calculated_temperature BETWEEN -58 AND 58
-        );
 END $$;
