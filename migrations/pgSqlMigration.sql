@@ -1,8 +1,7 @@
-
 DO $$
 BEGIN
     -- 1. Очистка существующих объектов
-    DROP TABLE IF EXISTS temperature_calculations CASCADE;
+    DROP TABLE IF EXISTS calc_temperature_correction CASCADE;
     DROP TABLE IF EXISTS parameters CASCADE;
     DROP TABLE IF EXISTS logs CASCADE;
     DROP TABLE IF EXISTS users CASCADE;
@@ -116,7 +115,7 @@ BEGIN
 
     -- 4. Вставка данных в новую таблицу
     insert into public.calc_temperature_correction(temperature, correction)
-		values(0, 0.5), (5, 0.5), (10, 1), (15, 1), (20, 1.5), (25, 2), (30, 3.5), (40, 4.5);
+		values(0, 0.5), (5, 0.5), (10, 1), (15, 1), (20, 1.5), (25, 2), (30, 3.5), (40, 4.5)
     ON CONFLICT DO NOTHING;
 
     -- 5. Синхронизация счетчиков (sequence) через переменные.
@@ -142,9 +141,6 @@ BEGIN
     SELECT COALESCE(MAX(id), 1) INTO v_max_id FROM parameters;
     PERFORM setval('parameters_id_seq', v_max_id);
 
-    SELECT COALESCE(MAX(id), 1) INTO v_max_id FROM temperature_calculations;
-    PERFORM setval('temperature_calculations_id_seq', v_max_id);
-
 END $$;
 
 
@@ -166,9 +162,6 @@ BEGIN
         ADD CONSTRAINT fk_param_log FOREIGN KEY (log_id) REFERENCES logs(id),
         ADD CONSTRAINT fk_param_type FOREIGN KEY (parametr_id) REFERENCES types_parameters(id),
         ADD CONSTRAINT fk_param_unit FOREIGN KEY (units_id) REFERENCES units_measurement(id);
-
-    ALTER TABLE temperature_calculations 
-        ADD CONSTRAINT fk_temp_calc_log FOREIGN KEY (log_id) REFERENCES logs(id);
 
     -- 2. Создание ограничений (CHECK)
     
