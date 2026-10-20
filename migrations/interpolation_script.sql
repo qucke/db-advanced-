@@ -12,6 +12,8 @@ BEGIN
         WHEN duplicate_object THEN NULL;
     END;
 
+	COMMENT ON TYPE calc_point IS 'Структура для хранения границ интерполяции: (x0, y0, x1, y1)';
+
     -- 2. Функция для определения параметров (границ) интерполяции по температуре из таблицы
 	CREATE OR REPLACE FUNCTION get_temp_bounds_from_table(p_temp numeric)
 	RETURNS calc_point AS $func$
@@ -67,6 +69,8 @@ BEGIN
 	END;
 	$func$ LANGUAGE plpgsql;
 
+	COMMENT ON FUNCTION get_temp_bounds_from_table(numeric) IS 'Возвращает опорные точки (x0,y0) и (x1,y1) для интерполяции по температуре из таблицы calc_temperature_correction';
+
     CREATE OR REPLACE FUNCTION calc_interpolation(x numeric, bounds calc_point)
     RETURNS numeric AS $func$
     DECLARE
@@ -86,5 +90,7 @@ BEGIN
         RETURN round(v_result::numeric, 2);
     END;
     $func$ LANGUAGE plpgsql;
+
+	COMMENT ON FUNCTION calc_interpolation(numeric, calc_point) IS 'Вычисляет значение линейной интерполяции для заданного X и структуры границ';
 
 END $$;
