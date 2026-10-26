@@ -38,55 +38,60 @@ BEGIN
     -- 3. Функция валидации параметров
     CREATE OR REPLACE FUNCTION validate_parameters(p_list parameter_list)
     RETURNS text
-    LANGUAGE plpgsql
+    LANGUAGE sql
     STABLE AS $func$
-    DECLARE
-        v_errors text := '';
-        v_item parameter_value;
-        v_type types_parameters%ROWTYPE;
-        v_required int[];
-        v_seen int[] := ARRAY[]::int[];
-        v_id int;
-    BEGIN
-        v_required := CASE p_list.equipment_id
+    WITH req AS (
+        SELECT CASE p_list.equipment_id
             WHEN 1 THEN ARRAY[1, 2, 3, 4, 5]
             WHEN 2 THEN ARRAY[1, 2, 3, 4, 6]
-            ELSE NULL
-        END;
-
-        FOREACH v_item IN ARRAY p_list.params LOOP
-            v_seen := v_seen || v_item.parametr_id;
-            
-            SELECT * INTO v_type FROM types_parameters WHERE id = v_item.parametr_id;
-            
-            -- Проверка на недопустимый параметр
-            IF v_required IS NOT NULL AND NOT (v_item.parametr_id = ANY(v_required)) THEN
-                v_errors := v_errors || format('%s: %s; ', 
-                    (SELECT message FROM Errors WHERE code = 'FORBIDDEN_PARAM'), v_type.name);
-            END IF;
-
-            -- Проверка диапазона 
-            IF v_item.parametr_value IS NULL OR v_item.parametr_value < v_type.min_val OR v_item.parametr_value > v_type.max_val THEN
-                v_errors := v_errors || format('%s: %s = %s (допустимо %s..%s); ', 
-                    (SELECT message FROM Errors WHERE code = 'OUT_OF_RANGE'), 
-                    v_type.name, COALESCE(v_item.parametr_value::text, 'NULL'), v_type.min_val, v_type.max_val);
-            END IF;
-        END LOOP;
-
-        -- Проверка отсутствия обязательных параметров
-        IF v_required IS NOT NULL THEN
-            FOREACH v_id IN ARRAY v_required LOOP
-                IF NOT (v_id = ANY(v_seen)) THEN
-                    v_errors := v_errors || format('%s: %s; ', 
-                        (SELECT message FROM Errors WHERE code = 'MISSING_PARAM'), 
-                        (SELECT name FROM types_parameters WHERE id = v_id));
-                END IF;
-            END LOOP;
-        END IF;
-
-        IF length(v_errors) = 0 THEN RETURN NULL; END IF;
-        RETURN trim(trailing '; ' FROM v_errors);
-    END;
+            ELSE ARRAY[]::int[]
+        END AS req_ids
+    ),
+    params AS (
+        SELECT p.parametr_id, p.parametr_value
+        FROM unnest(p_list.params) AS p
+    ),
+    checks AS (
+        SELECT 
+            p.parametr_id,
+            p.parametr_value,
+            tp.name,
+            tp.min_val,
+            tp.max_val,
+            r.req_ids
+        FROM params p
+        LEFT JOIN types_parameters tp ON tp.id = p.parametr_id
+        CROSS JOIN req r
+    ),
+    forbidden AS (
+        -- Поиск недопустимых параметров
+        SELECT format('%s: %s; ', (SELECT message FROM Errors WHERE code = 'FORBIDDEN_PARAM'), name) AS msg
+        FROM checks
+        WHERE parametr_id <> ALL(req_ids)
+    ),
+    out_of_range AS (
+        -- Поиск параметров вне диапазона
+        SELECT format('%s: %s = %s (допустимо %s..%s); ', 
+               (SELECT message FROM Errors WHERE code = 'OUT_OF_RANGE'), 
+               name, COALESCE(parametr_value::text, 'NULL'), min_val::text, max_val::text) AS msg
+        FROM checks
+        WHERE parametr_value < min_val OR parametr_value > max_val
+    ),
+    missing AS (
+        -- Поиск отсутствующих обязательных параметров
+        SELECT format('%s: %s; ', (SELECT message FROM Errors WHERE code = 'MISSING_PARAM'), tp.name) AS msg
+        FROM req r
+        CROSS JOIN unnest(r.req_ids) AS req_id
+        LEFT JOIN types_parameters tp ON tp.id = req_id
+        LEFT JOIN params p ON p.parametr_id = req_id
+        WHERE p.parametr_id IS NULL
+    )
+    SELECT NULLIF(
+        COALESCE((SELECT string_agg(msg, '') FROM forbidden), '') ||
+        COALESCE((SELECT string_agg(msg, '') FROM out_of_range), '') ||
+        COALESCE((SELECT string_agg(msg, '') FROM missing), ''),
+        ''
+    );
     $func$;
 
     -- 4. Отчет "Список параметров с ошибками" 
